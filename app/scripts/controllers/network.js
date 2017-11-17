@@ -23,6 +23,8 @@ module.exports = class NetworkController extends EventEmitter {
 
     this.on('userChangedNetwork', () => this.emit('networkDidChange'))
     this.on('networkDidChange', this.lookupNetwork)
+
+    setInterval(() => this.detectProviderChange(), 6000)
   }
 
   initializeProvider (_providerParams) {
@@ -38,7 +40,6 @@ module.exports = class NetworkController extends EventEmitter {
 
   verifyNetwork () {
     // Check network when restoring connectivity:
-    console.log(`verifying network if loading, ${this.isNetworkLoading()}`)
     if (this.isNetworkLoading()) this.lookupNetwork()
   }
 
@@ -47,8 +48,6 @@ module.exports = class NetworkController extends EventEmitter {
   }
 
   setNetworkState (network) {
-    console.trace('SETTING NETWORK')
-    console.dir(network)
     return this.networkStore.putState(network)
   }
 
@@ -57,23 +56,18 @@ module.exports = class NetworkController extends EventEmitter {
   }
 
   async lookupNetwork () {
-    console.log('looking up network')
     // Prevent firing when provider is not defined.
     if (!this.eth) {
-      console.log('no provider detected', this.eth)
       return
     }
 
     let network
     try {
       network = await this.eth.net_version()
-      console.log('network retrieved', network)
     } catch (err) {
-      console.log('failed to get version ', err)
       return this.setNetworkState('loading')
     }
 
-    console.log('setting state to ', network)
     this.setNetworkState(network)
     log.info('web3.getNetwork returned ' + network)
   }
@@ -118,27 +112,46 @@ module.exports = class NetworkController extends EventEmitter {
   // as one that was known before.
   async detectProviderChange () {
     // After recent blocks controller is added
-    if (!('recentBlocks' in this)) {
+    if (!('recentBlocks' in this) || !('txController' in this)) {
       return
     }
 
-    const { recentBlocks } = this
-    const { blocks } = recentBlocks.store.getState().recentBlocks
+    const { recentBlocks, eth } = this
+    const blocks = recentBlocks.store.getState().recentBlocks
+    const oldestTx = this.txController.getOldestTx()
+
+    // Doesn't work if we don't have some history
+    if (blocks.length < 3) {
+      return
+    }
 
     const earliest = blocks[0]
     const middle = blocks[Math.round(blocks.length / 2)]
 
-    const [ earlyCheck, middleCheck, syncing ] = await Promise.all([
-      eth.getBlockByHash(earliest.hash),
-      eth.getBlockByHash(middle.hash),
-      eth.syncing(),
-    ])
+    try {
 
-    console.log('COMPARING BLOCK HASHES', earliest.hash, earlyCheck.hash)
+      let [ earlyCheck, middleCheck, syncing, checkTx ] = await Promise.all([
+        eth.getBlockByHash(earliest.hash, false),
+        eth.getBlockByHash(middle.hash, false),
+        eth.syncing(),
+        oldestTx ? eth.getTransactionByHash(oldestTx.hash) : undefined,
+      ])
 
-    if ((earliest.hash !== earlyCheck.hash ||
-         middle.hash !== middleCheck.hash) && !syncing) {
-      this._switchNetwork(this._baseProviderParams)
+      const earlyMatch = earliest && earlyCheck && earliest.hash === earlyCheck.hash
+      const middleMatch = middle && middleCheck && middle.hash === middleCheck.hash
+      const txMatch = typeof oldestTx === 'undefined' ||
+        (oldestTx && checkTx && oldestTx.hash === checkTx.hash)
+
+      if ((!earlyMatch ||
+           !middleMatch ||
+           !txMatch) && !syncing) {
+        this.emit('providerWasRemotelyChanged')
+      }
+    } catch (e) {
+      // Here is where TestRPC is failing to return `null` as reported
+      // in this issue:
+      // https://github.com/ethereumjs/testrpc/issues/429
+      log.error('Problem fetching proof of network change', e)
     }
   }
 

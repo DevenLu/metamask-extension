@@ -88,9 +88,6 @@ module.exports = class MetamaskController extends EventEmitter {
     this.recentBlocks = new RecentBlocksController({
       blockTracker: this.blockTracker,
     })
-    this.networkController.on('userChangedNetwork', () => {
-      this.recentBlocks.resetState()
-    })
     this.networkController.recentBlocks = this.recentBlocks
 
     // eth data query tools
@@ -138,6 +135,11 @@ module.exports = class MetamaskController extends EventEmitter {
       ethQuery: this.ethQuery,
     })
     this.txController.on('newUnapprovedTx', opts.showUnapprovedTx.bind(opts))
+    this.networkController.txController = this.txController
+    this.networkController.on('providerWasRemotelyChanged', () => {
+      this.txController.clearTxs()
+      this.balancesController.updateAllBalances()
+    })
 
     // computed balances (accounting for pending transactions)
     this.balancesController = new BalancesController({
@@ -146,6 +148,10 @@ module.exports = class MetamaskController extends EventEmitter {
       blockTracker: this.blockTracker,
     })
     this.networkController.on('networkDidChange', () => {
+      this.balancesController.updateAllBalances()
+    })
+    this.networkController.on('userChangedNetwork', () => {
+      this.recentBlocks.resetState()
       this.balancesController.updateAllBalances()
     })
     this.balancesController.updateAllBalances()
