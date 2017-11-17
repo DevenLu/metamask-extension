@@ -88,9 +88,10 @@ module.exports = class MetamaskController extends EventEmitter {
     this.recentBlocks = new RecentBlocksController({
       blockTracker: this.blockTracker,
     })
-    this.networkController.on('networkDidChange', () => {
+    this.networkController.on('userChangedNetwork', () => {
       this.recentBlocks.resetState()
     })
+    this.networkController.recentBlocks = this.recentBlocks
 
     // eth data query tools
     this.ethQuery = new EthQuery(this.provider)

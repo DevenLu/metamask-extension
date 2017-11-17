@@ -114,6 +114,7 @@ App.prototype.render = function () {
   var props = this.props
   const { isLoading, loadingMessage, network } = props
   const isLoadingNetwork = network === 'loading' && props.currentView.name !== 'config'
+  console.log(`LOADING with msg ${loadMessage} and isLoading ${isLoading} bc net is ${network} and currentview is ${props.currentView.name}`)
   const loadMessage = loadingMessage || isLoadingNetwork ?
     `Connecting to ${this.getNetworkName()}` : null
   log.debug('Main ui render function')
@@ -148,7 +149,7 @@ App.prototype.render = function () {
       (isLoading || isLoadingNetwork) && h(Loading, {
         loadingMessage: loadMessage,
       }),
-      
+
       // this.renderLoadingIndicator({ isLoading, isLoadingNetwork, loadMessage }),
 
       // content
