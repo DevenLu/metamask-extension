@@ -1,5 +1,4 @@
 const ethUtil = require('ethereumjs-util')
-const Identicon = require('../identicon')
 const { conversionUtil, multiplyCurrencies } = require('../../conversion-util')
 
 const MIN_GAS_PRICE_HEX = (100000000).toString(16)
@@ -12,6 +11,7 @@ const MIN_GAS_PRICE_GWEI = ethUtil.addHexPrefix(conversionUtil(MIN_GAS_PRICE_HEX
   toDenomination: 'GWEI',
   fromNumericBase: 'hex',
   toNumericBase: 'hex',
+  numberOfDecimals: 1,
 }))
 
 const MIN_GAS_TOTAL = multiplyCurrencies(MIN_GAS_LIMIT_HEX, MIN_GAS_PRICE_HEX, {

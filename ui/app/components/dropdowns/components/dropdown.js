@@ -31,7 +31,7 @@ class Dropdown extends Component {
         containerClassName,
         useCssTransition,
         isOpen,
-        zIndex: 30,
+        zIndex: 55,
         onClickOutside,
         style,
         innerStyle: innerStyleDefaults,
@@ -68,6 +68,7 @@ Dropdown.propTypes = {
   onClickOutside: PropTypes.func,
   innerStyle: PropTypes.object,
   useCssTransition: PropTypes.bool,
+  containerClassName: PropTypes.string,
 }
 
 class DropdownMenuItem extends Component {

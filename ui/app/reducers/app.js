@@ -44,7 +44,7 @@ function reduceApp (state, action) {
       },
       previousModalState: {
         name: null,
-      }
+      },
     },
     sidebarOpen: false,
     networkDropdownOpen: false,
@@ -100,7 +100,7 @@ function reduceApp (state, action) {
           state.appState.modal,
           { open: false },
           { modalState: { name: null } },
-          { previousModalState: appState.modal.modalState}, 
+          { previousModalState: appState.modal.modalState},
         ),
       })
 
@@ -175,6 +175,7 @@ function reduceApp (state, action) {
           name: 'import-menu',
         },
         transForward: true,
+        warning: null,
       })
 
     case actions.SHOW_INFO_PAGE:

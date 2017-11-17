@@ -189,7 +189,7 @@ const MODALS = {
 }
 
 const BACKDROPSTYLE = {
-  backgroundColor: 'rgba(245, 245, 245, 0.85)',
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
 }
 
 function mapStateToProps (state) {
@@ -220,7 +220,7 @@ Modal.prototype.render = function () {
 
   const children = modal.contents
   const modalStyle = modal[isMobileView() ? 'mobileModalStyle' : 'laptopModalStyle']
-  const contentStyle = modal.contentStyle || {};
+  const contentStyle = modal.contentStyle || {}
 
   return h(FadeModal,
     {

@@ -2,27 +2,30 @@ const Component = require('react').Component
 const { connect } = require('react-redux')
 const h = require('react-hyperscript')
 const inherits = require('util').inherits
-const abi = require('human-standard-token-abi')
+const ethAbi = require('ethereumjs-abi')
+const tokenAbi = require('human-standard-token-abi')
 const abiDecoder = require('abi-decoder')
-abiDecoder.addABI(abi)
+abiDecoder.addABI(tokenAbi)
 const actions = require('../../actions')
 const clone = require('clone')
 const Identicon = require('../identicon')
 const ethUtil = require('ethereumjs-util')
 const BN = ethUtil.BN
-const hexToBn = require('../../../../app/scripts/lib/hex-to-bn')
 const {
   conversionUtil,
   multiplyCurrencies,
   addCurrencies,
 } = require('../../conversion-util')
+const {
+  calcTokenAmount,
+} = require('../../token-util')
 
 const { MIN_GAS_PRICE_HEX } = require('../send/send-constants')
 
 const {
-  getSelectedTokenExchangeRate,
   getTokenExchangeRate,
   getSelectedAddress,
+  getSelectedTokenContract,
 } = require('../../selectors')
 
 module.exports = connect(mapStateToProps, mapDispatchToProps)(ConfirmSendToken)
@@ -31,12 +34,12 @@ function mapStateToProps (state, ownProps) {
   const { token: { symbol }, txData } = ownProps
   const { txParams } = txData || {}
   const tokenData = txParams.data && abiDecoder.decodeMethod(txParams.data)
+
   const {
     conversionRate,
     identities,
     currentCurrency,
   } = state.metamask
-  const accounts = state.metamask.accounts
   const selectedAddress = getSelectedAddress(state)
   const tokenExchangeRate = getTokenExchangeRate(state, symbol)
 
@@ -47,6 +50,8 @@ function mapStateToProps (state, ownProps) {
     tokenExchangeRate,
     tokenData: tokenData || {},
     currentCurrency: currentCurrency.toUpperCase(),
+    send: state.metamask.send,
+    tokenContract: getSelectedTokenContract(state),
   }
 }
 
@@ -57,6 +62,33 @@ function mapDispatchToProps (dispatch, ownProps) {
     backToAccountDetail: address => dispatch(actions.backToAccountDetail(address)),
     cancelTransaction: ({ id }) => dispatch(actions.cancelTx({ id })),
     updateTokenExchangeRate: () => dispatch(actions.updateTokenExchangeRate(symbol)),
+    editTransaction: txMeta => {
+      const { token: { address } } = ownProps
+      const { txParams, id } = txMeta
+      const tokenData = txParams.data && abiDecoder.decodeMethod(txParams.data)
+      const { params = [] } = tokenData
+      const { value } = params[1] || {}
+      const amount = conversionUtil(value, {
+        fromNumericBase: 'dec',
+        toNumericBase: 'hex',
+      })
+      const {
+        gas: gasLimit,
+        gasPrice,
+        to,
+      } = txParams
+      dispatch(actions.setSelectedToken(address))
+      dispatch(actions.updateSend({
+        gasLimit,
+        gasPrice,
+        gasTotal: null,
+        to,
+        amount,
+        errors: { to: null, amount: null },
+        editingTransactionId: id,
+      }))
+      dispatch(actions.showSendTokenPage())
+    },
   }
 }
 
@@ -68,16 +100,34 @@ function ConfirmSendToken () {
 }
 
 ConfirmSendToken.prototype.componentWillMount = function () {
+  const { tokenContract, selectedAddress } = this.props
+  tokenContract && tokenContract
+    .balanceOf(selectedAddress)
+    .then(usersToken => {
+    })
   this.props.updateTokenExchangeRate()
 }
 
 ConfirmSendToken.prototype.getAmount = function () {
-  const { conversionRate, tokenExchangeRate, token, tokenData } = this.props
+  const {
+    conversionRate,
+    tokenExchangeRate,
+    token,
+    tokenData,
+    send: { amount, editingTransactionId },
+  } = this.props
   const { params = [] } = tokenData
-  const { value } = params[1] || {}
+  let { value } = params[1] || {}
   const { decimals } = token
-  const multiplier = Math.pow(10, Number(decimals || 0))
-  const sendTokenAmount = Number(value / multiplier)
+
+  if (editingTransactionId) {
+    value = conversionUtil(amount, {
+      fromNumericBase: 'hex',
+      toNumericBase: 'dec',
+    })
+  }
+
+  const sendTokenAmount = calcTokenAmount(value, decimals)
 
   return {
     fiat: tokenExchangeRate
@@ -147,7 +197,7 @@ ConfirmSendToken.prototype.getData = function () {
   const { value } = params[0] || {}
   const txMeta = this.gatherTxMeta()
   const txParams = txMeta.txParams || {}
-  
+
   return {
     from: {
       address: txParams.from,
@@ -243,10 +293,8 @@ ConfirmSendToken.prototype.renderTotalPlusGas = function () {
 }
 
 ConfirmSendToken.prototype.render = function () {
-  const { backToAccountDetail, selectedAddress } = this.props
+  const { editTransaction } = this.props
   const txMeta = this.gatherTxMeta()
-  const txParams = txMeta.txParams || {}
-
   const {
     from: {
       address: fromAddress,
@@ -268,8 +316,8 @@ ConfirmSendToken.prototype.render = function () {
       h('div.confirm-screen-wrapper.flex-column.flex-grow', [
         h('h3.flex-center.confirm-screen-header', [
           h('button.confirm-screen-back-button', {
-            onClick: () => backToAccountDetail(selectedAddress),
-          }, 'BACK'),
+            onClick: () => editTransaction(txMeta),
+          }, 'EDIT'),
           h('div.confirm-screen-title', 'Confirm Transaction'),
           h('div.confirm-screen-header-tip'),
         ]),
@@ -390,6 +438,38 @@ ConfirmSendToken.prototype.gatherTxMeta = function () {
   const props = this.props
   const state = this.state
   const txData = clone(state.txData) || clone(props.txData)
+
+  if (props.send.editingTransactionId) {
+    const {
+      send: {
+        memo,
+        amount,
+        gasLimit: gas,
+        gasPrice,
+      },
+    } = props
+
+    const { txParams: { from, to } } = txData
+
+    const tokenParams = {
+      from: ethUtil.addHexPrefix(from),
+      value: '0',
+      gas: ethUtil.addHexPrefix(gas),
+      gasPrice: ethUtil.addHexPrefix(gasPrice),
+    }
+
+    const data = '0xa9059cbb' + Array.prototype.map.call(
+      ethAbi.rawEncode(['address', 'uint256'], [to, ethUtil.addHexPrefix(amount)]),
+      x => ('00' + x.toString(16)).slice(-2)
+    ).join('')
+
+    txData.txParams = {
+      ...tokenParams,
+      to: ethUtil.addHexPrefix(to),
+      memo: memo && ethUtil.addHexPrefix(memo),
+      data,
+    }
+  }
 
   // log.debug(`UI has defaulted to tx meta ${JSON.stringify(txData)}`)
   return txData

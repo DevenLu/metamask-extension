@@ -47,8 +47,6 @@ class PreferencesController {
   }
 
   removeToken (rawAddress) {
-    const address = normalizeAddress(rawAddress)
-
     const tokens = this.store.getState().tokens
 
     const updatedTokens = tokens.filter(token => token.address !== rawAddress)
